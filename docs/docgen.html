@@ -1,0 +1,83 @@
+<!DOCTYPE html>  <html> <head>   <title>docgen.coffee</title>   <meta http-equiv="content-type" content="text/html; charset=UTF-8">   <link rel="stylesheet" media="all" href="docco.css" /> </head> <body>   <div id="container">     <div id="background"></div>            <div id="jump_to">         Jump To &hellip;         <div id="jump_wrapper">           <div id="jump_page">                                           <a class="source" href="docco.html">                 docco.coffee               </a>                                           <a class="source" href="docgen.html">                 docgen.coffee               </a>                        </div>         </div>       </div>          <table cellpadding="0" cellspacing="0">       <thead>         <tr>           <th class="docs">             <h1>               docgen.coffee             </h1>           </th>           <th class="code">           </th>         </tr>       </thead>       <tbody>                               <tr id="section-1">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-1">&#182;</a>               </div>                            </td>             <td class="code">               <div class="highlight"><pre><span class="nv">path = </span><span class="nx">require</span><span class="p">(</span><span class="s">&#39;path&#39;</span><span class="p">)</span>
+<span class="nv">cp = </span><span class="nx">require</span><span class="p">(</span><span class="s">&#39;child_process&#39;</span><span class="p">)</span>
+<span class="nv">minimatch = </span><span class="nx">require</span><span class="p">(</span><span class="s">&#39;minimatch&#39;</span><span class="p">)</span>
+<span class="nv">EventEmitter = </span><span class="nx">require</span><span class="p">(</span><span class="s">&#39;events&#39;</span><span class="p">).</span><span class="nx">EventEmitter</span>
+<span class="nv">colors = </span><span class="nx">require</span><span class="p">(</span><span class="s">&#39;colors&#39;</span><span class="p">)</span>
+<span class="nv">module.exports = </span><span class="k">class</span> <span class="nx">DocGenerator</span> <span class="k">extends</span> <span class="nx">EventEmitter</span>
+
+  <span class="nv">constructor: </span><span class="nf">(@coffeestand, @opts) -&gt;</span>
+    <span class="vi">@doccoFiles = </span><span class="p">[]</span>
+    <span class="nx">@_setDoccoSources</span><span class="p">(</span><span class="nx">@opts</span><span class="p">.</span><span class="nx">doccoSources</span><span class="p">)</span>
+    <span class="vi">@doccoOptions = </span><span class="p">{</span>
+      <span class="nv">css: </span><span class="nx">@opts</span><span class="p">.</span><span class="nx">doccoCSS</span><span class="p">,</span>
+      <span class="nv">output: </span><span class="nx">@opts</span><span class="p">.</span><span class="nx">doccoOutput</span><span class="p">,</span>
+      <span class="nv">template: </span><span class="nx">@opts</span><span class="p">.</span><span class="nx">doccoTemplate</span>
+    <span class="p">}</span>
+    <span class="nx">@_setDocco</span><span class="p">()</span>
+  <span class="nv">setListeners: </span><span class="nf">(cb) -&gt;</span>
+    <span class="nx">@coffeestand</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;compiled&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="k">if</span> <span class="nx">@doccoFiles</span><span class="p">.</span><span class="nx">length</span> <span class="o">isnt</span> <span class="mi">0</span>
+        <span class="nx">@_withoutFile</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span>
+      <span class="k">else</span>
+        <span class="nx">@docco</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span>
+
+    <span class="p">)</span>
+    <span class="nx">@coffeestand</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;nofile&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="k">if</span> <span class="nx">@doccoFiles</span><span class="p">.</span><span class="nx">length</span> <span class="o">isnt</span> <span class="mi">0</span>
+        <span class="nx">@_withoutFile</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="nx">@coffeestand</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;write error&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="k">if</span> <span class="nx">@doccoFiles</span><span class="p">.</span><span class="nx">length</span> <span class="o">isnt</span> <span class="mi">0</span>
+        <span class="nx">@_withoutFile</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="nx">@coffeestand</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;compile error&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="k">if</span> <span class="nx">@docgen</span><span class="p">.</span><span class="nx">doccoFiles</span><span class="p">.</span><span class="nx">length</span> <span class="o">isnt</span> <span class="mi">0</span>
+        <span class="nx">@_withoutFile</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="nx">@coffeestand</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;File found&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">file</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="k">if</span> <span class="nx">@_isDocco</span><span class="p">(</span><span class="nx">file</span><span class="p">)</span> <span class="o">and</span> <span class="nx">path</span><span class="p">.</span><span class="nx">extname</span><span class="p">(</span><span class="nx">file</span><span class="p">)</span> <span class="o">is</span> <span class="s">&#39;.coffee&#39;</span> <span class="o">and</span> <span class="o">not</span> <span class="nx">@coffeestand</span><span class="p">.</span><span class="nx">_isIgnore</span><span class="p">(</span><span class="nx">file</span><span class="p">)</span> <span class="o">and</span> <span class="o">not</span> <span class="nx">@coffeestand</span><span class="p">.</span><span class="nx">_isNoCompile</span><span class="p">(</span><span class="nx">file</span><span class="p">)</span>
+        <span class="nx">@doccoFiles</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="nx">file</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="nx">cb</span><span class="p">()</span></pre></div>             </td>           </tr>                               <tr id="section-2">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-2">&#182;</a>               </div>               <h4>Set sources for docco</h4>
+
+<p><code>sources (Array)</code> : a list of sources</p>             </td>             <td class="code">               <div class="highlight"><pre>  <span class="nv">_setDoccoSources: </span><span class="nf">(sources) -&gt;</span>
+    <span class="k">if</span> <span class="nx">sources</span><span class="o">?</span>
+      <span class="vi">@doccoSources = </span><span class="p">[]</span>
+      <span class="k">for</span> <span class="nx">v</span> <span class="k">in</span> <span class="nx">sources</span>
+        <span class="nx">@doccoSources</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="nx">path</span><span class="p">.</span><span class="nx">resolve</span><span class="p">(</span><span class="nx">v</span><span class="p">))</span></pre></div>             </td>           </tr>                               <tr id="section-3">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-3">&#182;</a>               </div>               <h4>Set a child process for docco operations</h4>             </td>             <td class="code">               <div class="highlight"><pre>  <span class="nv">_setDocco: </span><span class="nf">() -&gt;</span>
+    <span class="vi">@cp_docco = </span><span class="nx">cp</span><span class="p">.</span><span class="nx">fork</span><span class="p">(</span><span class="nx">__dirname</span> <span class="o">+</span> <span class="s">&#39;/docco&#39;</span><span class="p">)</span>
+    <span class="nx">@cp_docco</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;message&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="k">if</span> <span class="nx">data</span><span class="p">.</span><span class="nx">err</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s">&#39;Docco: something went wrong!\n&#39;</span><span class="p">.</span><span class="nx">red</span><span class="p">)</span>
+      <span class="k">else</span>
+        <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s">&#39;Docco: documents successfully generated!\n&#39;</span><span class="p">.</span><span class="nx">green</span><span class="p">)</span>
+      <span class="nx">@emit</span><span class="p">(</span><span class="s">&#39;docco&#39;</span><span class="p">,</span> <span class="nx">data</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="nx">@cp_docco</span><span class="p">.</span><span class="kc">on</span><span class="p">(</span><span class="s">&#39;error&#39;</span><span class="p">,</span> <span class="p">(</span><span class="nx">err</span><span class="p">)</span> <span class="o">=&gt;</span>
+      <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s">&#39;Docco: something went wrong!\n&#39;</span><span class="p">.</span><span class="nx">red</span><span class="p">)</span>
+      <span class="nx">@_setDocco</span><span class="p">()</span>
+    <span class="p">)</span></pre></div>             </td>           </tr>                               <tr id="section-4">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-4">&#182;</a>               </div>               <h4>See if the file should be a source of docco document</h4>
+
+<p><code>filepath (String)</code> : a path to a file to check</p>             </td>             <td class="code">               <div class="highlight"><pre>  <span class="nv">_isDocco: </span><span class="nf">(filepath) -&gt;</span>
+    <span class="k">if</span> <span class="nx">@doccoSources</span><span class="o">?</span>
+      <span class="k">for</span> <span class="nx">v</span> <span class="k">in</span> <span class="nx">@doccoSources</span>
+        <span class="k">if</span> <span class="nx">minimatch</span><span class="p">(</span><span class="nx">filepath</span><span class="p">,</span> <span class="nx">v</span><span class="p">,</span> <span class="p">{</span><span class="nx">dot</span><span class="o">:</span><span class="kc">true</span><span class="p">})</span>
+          <span class="k">return</span> <span class="nx">@doccoSources</span>
+          <span class="k">break</span>
+      <span class="k">return</span> <span class="kc">null</span>
+    <span class="k">else</span>
+      <span class="k">return</span> <span class="kc">null</span></pre></div>             </td>           </tr>                               <tr id="section-5">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-5">&#182;</a>               </div>               <h4>take off a file from @doccoFiles`</h4>             </td>             <td class="code">               <div class="highlight"><pre>  <span class="nv">_withoutFile: </span><span class="nf">(file) -&gt;</span>
+    <span class="vi">@doccoFiles = </span><span class="p">(</span><span class="nx">v</span> <span class="k">for</span> <span class="nx">v</span> <span class="k">in</span> <span class="nx">@doccoFiles</span> <span class="k">when</span> <span class="nx">v</span> <span class="o">isnt</span> <span class="nx">file</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nx">@doccoFiles</span><span class="p">.</span><span class="nx">length</span> <span class="o">is</span> <span class="mi">0</span>
+      <span class="nx">@</span><span class="nb">document</span><span class="p">()</span></pre></div>             </td>           </tr>                               <tr id="section-6">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-6">&#182;</a>               </div>               <h4>See if there is a need for docco generation</h4>
+
+<p><code>filename (String)</code> : a path to the file to check</p>             </td>             <td class="code">               <div class="highlight"><pre>  <span class="nv">docco: </span><span class="nf">(filename) -&gt;</span>
+    <span class="k">if</span> <span class="nx">@doccoSources</span><span class="o">?</span> <span class="o">and</span> <span class="nx">@doccoFiles</span><span class="p">.</span><span class="nx">length</span> <span class="o">is</span> <span class="mi">0</span> <span class="o">and</span> <span class="nx">filename</span><span class="o">?</span> <span class="o">and</span> <span class="nx">@_isDocco</span><span class="p">(</span><span class="nx">filename</span><span class="p">)</span>
+      <span class="nx">@</span><span class="nb">document</span><span class="p">()</span></pre></div>             </td>           </tr>                               <tr id="section-7">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-7">&#182;</a>               </div>               <h4>Generate docco documents via a child process</h4>             </td>             <td class="code">               <div class="highlight"><pre>  <span class="nb">document</span><span class="o">:</span> <span class="nf">() -&gt;</span></pre></div>             </td>           </tr>                               <tr id="section-8">             <td class="docs">               <div class="pilwrap">                 <a class="pilcrow" href="#section-8">&#182;</a>               </div>               <p>Allow a bit of time before generating docco docs. Auto-saved files such as '.#foo.coffee' will cause an error. These files are likely to be cleared instantly, and docco seems to list up these files, but fails to open them because those files are already gone by the time docco can open them. So don't let docco list up instantly disappearing files by giving it 500ms.</p>             </td>             <td class="code">               <div class="highlight"><pre>    <span class="nx">setTimeout</span><span class="p">(</span>
+      <span class="o">=&gt;</span>
+        <span class="nx">@cp_docco</span><span class="p">.</span><span class="nx">send</span><span class="p">({</span><span class="nv">sources: </span><span class="nx">@doccoSources</span><span class="p">,</span> <span class="nv">options: </span><span class="nx">@doccoOptions</span><span class="p">})</span>
+      <span class="mi">500</span>
+    <span class="p">)</span>
+    
+
+</pre></div>             </td>           </tr>                </tbody>     </table>   </div> </body> </html> 
